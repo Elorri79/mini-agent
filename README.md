@@ -2,6 +2,8 @@
 
 A work-in-progress CLI agent designed to work with small language models (6.7B-13B parameters) running locally via OpenAI-compatible APIs like Ollama.
 
+![mini-agent Screenshot](screenshot.png)
+
 ## Project Overview
 
 This project is a **work in progress** that aims to build an intelligent CLI agent capable of:
