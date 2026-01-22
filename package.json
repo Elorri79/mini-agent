@@ -1,0 +1,19 @@
+{
+  "name": "vercel-ollama-agent",
+  "version": "1.0.0",
+  "description": "CLI agente con Vercel AI SDK + Ollama",
+  "type": "module",
+  "main": "dist/agent.js",
+  "bin": {
+    "vo-agent": "dist/agent.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/agent.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.2"
+  }
+}
