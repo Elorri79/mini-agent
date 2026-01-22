@@ -58,12 +58,30 @@ async function callModel(messages) {
     return reply;
 }
 // ---- Main loop with tools + Ralph support -------------------------
+function printBanner() {
+    const reset = '\x1b[0m';
+    const cyan = '\x1b[36m';
+    const white = '\x1b[37m';
+    console.log('');
+    console.log(`${cyan} ███╗   ███╗ ██╗ ███╗   ██╗ ██╗         █████╗   ██████╗  ███████╗ ███╗   ██╗ ████████╗${reset}`);
+    console.log(`${cyan} ████╗ ████║ ██║ ████╗  ██║ ██║        ██╔══██╗ ██╔════╝  ██╔════╝ ████╗  ██║ ╚══██╔══╝${reset}`);
+    console.log(`${cyan} ██╔████╔██║ ██║ ██╔██╗ ██║ ██║ █████╗ ███████║ ██║  ███╗ █████╗   ██╔██╗ ██║    ██║${reset}`);
+    console.log(`${cyan} ██║╚██╔╝██║ ██║ ██║╚██╗██║ ██║ ╚════╝ ██╔══██║ ██║   ██║ ██╔══╝   ██║╚██╗██║    ██║${reset}`);
+    console.log(`${cyan} ██║ ╚═╝ ██║ ██║ ██║ ╚████║ ██║        ██║  ██║ ╚██████╔╝ ███████╗ ██║ ╚████║    ██║${reset}`);
+    console.log(`${cyan} ╚═╝     ╚═╝ ╚═╝ ╚═╝  ╚═══╝ ╚═╝        ╚═╝  ╚═╝  ╚═════╝  ╚══════╝ ╚═╝  ╚═══╝    ╚═╝${reset}`);
+    console.log('');
+    console.log(`${white}  MINI-AGENT${reset} by Elorri`);
+    console.log(`  CLI for local LLMs with tools + self-review`);
+    console.log('');
+    console.log(`  Type "exit" to quit`);
+    console.log('');
+}
 async function main() {
+    printBanner();
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
     });
-    console.log('Mini Agent - CLI for local LLMs (type "exit" to quit)\n');
     const messages = [
         {
             role: 'system',

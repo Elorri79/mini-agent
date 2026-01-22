@@ -367,9 +367,22 @@ This is a **work in progress** project:
 
 MIT - Experimental project for learning and exploration of local AI agents.
 
+## Development
+
+This project was developed using **VSCode** with the assistance of **MiniMax** AI model.
+
+### Banner
+
+The ASCII art banner was generated using [oh-my-logo](https://github.com/shinshin86/oh-my-logo):
+
+```bash
+npx oh-my-logo "MINI-AGENT" sunset --filled --block-font block
+```
+
 ## Acknowledgments
 
 - [Ollama](https://ollama.com/) - For making local models accessible
 - [Vercel AI SDK](https://sdk.vercel.ai/) - Architecture inspiration
 - Ralph Wiggum - For the review mechanism naming
+- [oh-my-logo](https://github.com/shinshin86/oh-my-logo) - For the stunning CLI banner generator
 
