@@ -1,342 +1,373 @@
 # mini-agent
 
-Agente de línea de comandos para desarrollo de software que:
+A work-in-progress CLI agent designed to work with small language models (6.7B-13B parameters) running locally via OpenAI-compatible APIs like Ollama.
 
-- Usa un **modelo local** servido vía API OpenAI‑compatible (por ejemplo, Ollama).
-- Orquesta el modelo con **lógica propia de agente** (tools + revisión).
-- Implementa una **tool `read_file`** para leer archivos del sistema.
-- Tiene un modo de auto‑revisión tipo **"Ralph Wiggum"** que comprueba y refina respuestas.
+## Project Overview
 
-Este proyecto sirve como base para seguir experimentando con agentes locales y skills estilo Vercel.
+This project is a **work in progress** that aims to build an intelligent CLI agent capable of:
 
----
+- Using **local models** served via OpenAI-compatible API (e.g., Ollama with `deepseek-coder:6.7b`)
+- Orchestrating the model with **agent logic** (tools + self-review)
+- Implementing **real tools** for file system operations, code analysis, and error debugging
+- A **"Ralph Wiggum" self-review mode** that checks and refines model responses
 
-## 1. Objetivo del proyecto
+## Why Small Models?
 
-Construir un **agente CLI** que:
+This project specifically targets small models (6.7B to 13B parameters) because:
 
-1. Use un modelo local (p.ej. `deepseek-coder:6.7b` en Ollama).
-2. Soporte **tool calls** mediante un protocolo JSON sencillo.
-3. Tenga una primera tool real:
-   - `read_file` → lee archivos del sistema y los pasa al modelo.
-4. Añada una capa de **auto‑revisión**:
-   - El modelo propone una respuesta.
-   - Un "revisor" (otro llamado al modelo) decide si es `OK` o `REINTENTAR`.
-   - Se itera hasta un máximo de N veces.
-5. En casos delicados (como extraer dependencias de `package.json`), el **agente decide por sí mismo** sin delegar esa tarea al modelo.
+- They can run **locally** on consumer hardware (no GPU required for 6.7B models)
+- They have **low latency** and **zero API costs**
+- They are **privacy-friendly** (all processing stays local)
+- With proper prompting and tools, they can be surprisingly effective
 
----
+## The Model
 
-## 2. Tecnologías utilizadas
+Currently configured to work with:
 
-- **Node.js** (CLI, orquestación y tools).
-- **TypeScript** (tipado y compilación a JS).
-- **Modelo local vía API OpenAI‑compatible** (en nuestro caso, un modelo pequeño de Ollama).
-- **Fish shell** (no es requisito, solo el entorno en el que se ha probado).
+- **Model**: `deepseek-coder:6.7b` (or any Ollama model with OpenAI-compatible API)
+- **API Base**: `http://localhost:11434/v1` (default Ollama port)
+- **Temperature**: 0.3 (for consistent responses from smaller models)
 
----
+### Recommended Models
 
-## 3. Paquetes y dependencias
+| Model | Size | Notes |
+|-------|------|-------|
+| deepseek-coder:6.7b | 6.7GB | Excellent for coding tasks |
+| qwen2.5-coder:7b | 7GB | Good general coding |
+| codellama:7b | 7GB | Meta's code model |
+| llama3.2:3b | 3GB | Lightweight general model |
 
-### Dependencias (`dependencies`)
+## Architecture
 
-Sin dependencias externas innecesarias. El proyecto usa solo las APIs nativas de Node.js.
+```
+User Input
+    |
+    v
+[Agent] - Detect if skill needed?
+    |
+    +-- Yes --> [Execute Skill]
+    |              +-- Multiple tools automatically
+    |              +-- Context enrichment
+    |              +-- Ralph review
+    |
+    +-- No --> [Call Model]
+                   |
+                   +-- Tool Call? --> [Handle Tool] + Ralph
+                   |
+                   +-- Direct Response? --> Ralph review
+    |
+    v
+Final Response
+```
 
-### Dependencias de desarrollo (`devDependencies`)
+## Available Tools
 
-- `typescript`: compilador TS → JS.
-- `@types/node`: tipos de Node.js para TypeScript.
-
-`package.json` actual:
+### read_file
+Reads file content from the filesystem.
 
 ```json
-{
-  "name": "vercel-ollama-agent",
-  "version": "1.0.0",
-  "description": "CLI agente con Vercel AI SDK + Ollama",
-  "type": "module",
-  "main": "dist/agent.js",
-  "bin": {
-    "vo-agent": "dist/agent.js"
-  },
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/agent.js"
-  },
-  "dependencies": {},
-  "devDependencies": {
-    "@types/node": "^22.10.7",
-    "typescript": "^5.7.2"
-  }
-}
+{ "tool": "read_file", "args": { "path": "./src/agent.ts" } }
 ```
 
----
+### list_dir
+Lists files and directories in a given path.
 
-## 4. Estructura del proyecto
-
-```bash
-src/
-├── agent.ts       Bucle REPL principal y orquestación
-├── config.ts      Configuración centralizada
-├── tools.ts       Definición e implementación de tools (bajo nivel)
-├── skills.ts      Definición e implementación de skills (alto nivel)
-└── reviewer.ts    Lógica de revisión tipo "Ralph Wiggum"
-
-skills/           📚 Documentación y specs de skills
-├── README.md          Guía para crear/usar skills
-├── DISCOVERY.md       Cómo el agente detecta skills automáticamente
-├── TEMPLATE.md        Template para crear skills nuevas
-├── analyze-project.md
-├── debug-error.md
-└── resolve-dependencies.md
-
-dist/
-└── *.js           Código compilado (no editar)
-
-tsconfig.json      Configuración de TypeScript
-package.json       Metadatos y dependencias
-README.md          Este archivo
+```json
+{ "tool": "list_dir", "args": { "path": "./src" } }
 ```
 
-### Descripción de módulos
+### search_in_file
+Searches for patterns (regex) in files.
 
-- **[config.ts](src/config.ts)**  
-  Configuración centralizada: URL de API, modelo, límites, prompts del sistema.
+```json
+{ "tool": "search_in_file", "args": { "path": "./src", "pattern": "async function" } }
+```
 
-- **[tools.ts](src/tools.ts)** (Bajo nivel)
-  - `readFileTool()` → Lee contenido de un archivo.
-  - `listDirTool()` → Lista archivos en un directorio.
-  - `searchInFileTool()` → Busca patrones en un archivo.
-  - `runCommandTool()` → Ejecuta comandos y resume salida.
-  - `extractPackageJsonDeps()` → Extrae dependencias sin usar el modelo.
-  - `parseToolCall()` → Parsea tool-calls JSON desde respuestas del modelo.
+### run_command
+Executes shell commands and returns output.
 
-- **[skills.ts](src/skills.ts)** (Alto nivel - Combinan múltiples tools)
-  - `skill_analyze_project()` → Analiza estructura, dependencias, archivos, build status.
-  - `skill_debug_error()` → Busca ubicación del error, contexto, intenta reproducir.
-  - `skill_resolve_dependencies()` → Resuelve problemas de dependencias e imports.
-  - `executeSkill()` → Router para ejecutar skills por nombre.
-  - `AVAILABLE_SKILLS` → Registro extensible de skills con metadata y referencias markdown.
+```json
+{ "tool": "run_command", "args": { "command": "npm run build" } }
+```
 
-- **[reviewer.ts](src/reviewer.ts)**  
-  - `reviewAnswer()` → Valida si una respuesta es correcta usando el modelo como revisor.
-  - `ralphLoop()` → Bucle de reintentos con revisión automática.
+### extractPackageJsonDeps
+Special handler for extracting dependencies from package.json without model intervention.
 
-- **[agent.ts](src/agent.ts)**  
-  - `callModel()` → Llamada base al API OpenAI-compatible.
-  - `detectSkill()` → Detecta automáticamente si pregunta necesita una skill.
-  - `main()` → Bucle REPL interactivo.
-  - `handleReadFileTool()`, `handleListDirTool()`, `handleSearchInFileTool()`, `handleRunCommandTool()` → Orquestación de tools con revisión Ralph.
+## Available Skills
 
----
+Skills are **high-level workflows** that combine multiple tools for complex tasks.
 
-## 5. Mejoras implementadas
+### analyze_project
+Analyzes the complete project structure.
 
-### Optimizaciones para modelos pequeños (6.7B-13B)
+**When to use:**
+- Understanding new project architecture
+- Dependency audits
+- Checking build status
 
-- ✅ **Temperature 0.3** → Mayor consistencia en respuestas.
-- ✅ **MAX_REVIEW_LOOPS: 7** → Más iteraciones para mejorar respuestas.
-- ✅ **MAX_CONTEXT_TOKENS: 2000** → Controlar tamaño de contexto.
-- ✅ **Prompts concisos** → Lenguaje directo, sin verbosidad innecesaria.
+**Example:** _"Analyze the project structure"_
 
-### Nuevas tools para evitar alucinaciones
+**Flow:**
+1. List directory contents
+2. Read package.json
+3. Search for source files
+4. Run build command
+5. Ralph reviews the final analysis
 
-- ✅ **`list_dir`** → Listar archivos sin que el modelo los invente.
-- ✅ **`search_in_file`** → Buscar patrones específicos (regex).
-- ✅ **`run_command`** → Ejecutar comandos y obtener salida real.
+### debug_error
+Debugs specific errors by finding location and root cause.
 
-### Eliminación de dependencias innecesarias
+**When to use:**
+- Build errors
+- Import/module issues
+- Runtime errors
 
-- ✅ Removidas `ai` y `zod` que no se usaban.
-- ✅ El proyecto usa solo APIs nativas de Node.js.
-- ✅ Ahorra ~100KB en `node_modules`.
+**Example:** _"Error: Cannot find module 'express'"_
 
-### Separación en módulos
+**Flow:**
+1. Search for error pattern in source
+2. Read matched files
+3. Try to reproduce (npm test/build)
+4. Ralph reviews the solution
 
-- ✅ **config.ts**: Configuración centralizada (fácil de modificar).
-- ✅ **tools.ts**: Lógica de herramientas (reutilizable).
-- ✅ **reviewer.ts**: Revisión tipo Ralph (independiente).
-- ✅ **agent.ts**: Orquestación limpia (~160 líneas vs 363).
+### resolve_dependencies
+Resolves dependency and import issues.
 
-### Mejoras de manejo de errores
+**When to use:**
+- Version conflicts
+- Missing modules
+- Clean up unused dependencies
 
-- ✅ Timeouts en peticiones HTTP.
-- ✅ Validación más robusta de rutas.
-- ✅ Mejor feedback ante errores.
+**Example:** _"I have missing module errors"_
 
-### Mejor UX
+**Flow:**
+1. Read package.json
+2. Run npm list
+3. Search for imports in source
+4. Run build to detect errors
+5. Ralph reviews the solution
 
-- ✅ Prompts del sistema más concisos.
-- ✅ Separación clara entre salidas (labels `[read_file]`, `[ERROR]`).
-- ✅ Reutilización consistente de funciones.
+## The Ralph Wiggum Skill
 
----
+Ralph is a **self-review mechanism** inspired by Ralph Wiggum from The Simpsons. It's not a traditional skill but a **quality assurance layer** that:
 
-## 6. Cómo usar
+1. Takes the model's proposed response
+2. Asks the model itself to evaluate if the response is correct
+3. Returns a verdict: `OK` or `RETRY`
+4. If `RETRY`, provides feedback for improvement
+5. Iterates up to 7 times (configurable) until `OK`
 
-### Instalación
+### How Ralph Works
+
+```typescript
+// Ralph loop pseudocode
+for i in 0..maxLoops:
+    answer = callModel(messages)
+    review = reviewAnswer(question, answer, context)
+    
+    if review.verdict === 'OK':
+        return answer
+    
+    // Add feedback for next iteration
+    messages.push({
+        role: 'system',
+        content: `Fix this based on feedback: ${review.feedback}`
+    })
+    messages.push({ role: 'assistant', content: answer })
+
+return answer  // Return even if not perfect
+```
+
+### Ralph Configuration
+
+```typescript
+MAX_REVIEW_LOOPS: 7     // Maximum iterations
+TEMPERATURE: 0.3        // Low temperature for consistency
+```
+
+### Why Ralph?
+
+Small models can:
+- Make factual errors
+- Hallucinate information
+- Miss context details
+
+Ralph helps by:
+- Catching obvious mistakes
+- Ensuring responses are grounded in actual tool output
+- Providing iterative improvement
+
+## Project Structure
+
+```
+mini-agent/
+├── src/
+│   ├── agent.ts         # Main REPL loop and orchestration
+│   ├── config.ts        # Centralized configuration
+│   ├── tools.ts         # Tool implementations (low-level)
+│   ├── skills.ts        # Skill implementations (high-level)
+│   └── reviewer.ts      # Ralph review logic
+├── skills/              # Skill documentation
+│   ├── README.md        # Skills guide
+│   ├── DISCOVERY.md     # How skills are detected
+│   ├── TEMPLATE.md      # Template for new skills
+│   ├── analyze-project.md
+│   ├── debug-error.md
+│   └── resolve-dependencies.md
+├── dist/                # Compiled JavaScript
+├── package.json
+└── tsconfig.json
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- Ollama (or any OpenAI-compatible local API server)
+- A local LLM model (recommended: `deepseek-coder:6.7b`)
+
+### Installation
 
 ```bash
 npm install
 npm run build
 ```
 
-### Ejecutar
+### Running
 
 ```bash
+# Set environment variables (optional)
+export OLLAMA_API_BASE=http://localhost:11434/v1
+export OLLAMA_MODEL=deepseek-coder:6.7b
+
+# Start the agent
 npm start
-# o
+# or
 node dist/agent.js
 ```
 
-### Ejemplos de comandos
+### Example Session
 
-```bash
-¿Qué versión de TypeScript usamos?
-Lee el archivo tsconfig.json
-Qué dependencias tiene package.json
-Explícame cómo funcionan las herramientas
+```
+Agente Vercel+Ollama (type "exit" to quit)
+
+> Analyze the project structure
+[SKILL DETECTADO: analyze_project]
+
+[STEP 1 - Structure]
+/home/user/mini-agent/src:
+agent.ts
+config.ts
+tools.ts
+skills.ts
+reviewer.ts
+
+[STEP 2 - Dependencies]
+package.json declares dependencies: (none)
+and devDependencies: @types/node, typescript
+
+[STEP 3 - Build Status]
+> tsc
+(no errors)
+
+> exit
+Goodbye!
 ```
 
----
+## Extending the Agent
 
-## 7. Variables de entorno
+### Adding New Tools
+
+Add tools in `src/tools.ts`:
+
+```typescript
+export async function myTool(args: { param: string }): Promise<string> {
+    // Tool implementation
+    return `Result: ${args.param}`;
+}
+```
+
+### Adding New Skills
+
+1. Create documentation in `skills/my-skill.md`
+2. Implement in `src/skills.ts`:
+
+```typescript
+export async function skill_my_skill(
+    messages: ChatMessage[],
+    question: string,
+): Promise<string> {
+    const results: string[] = [];
+    // Execute multiple tools
+    const result = await readFileTool({ path: './config.json' });
+    results.push(result);
+    
+    const context = results.join('\n');
+    const messagesWithContext: ChatMessage[] = [
+        ...messages,
+        { role: 'tool', name: 'skill_my_skill', content: context },
+        { role: 'user', content: question },
+    ];
+    
+    return await ralphLoop(messagesWithContext, question, context);
+}
+```
+
+3. Register in `AVAILABLE_SKILLS` in `skills.ts`
+
+## Configuration
+
+All configuration is centralized in `src/config.ts`:
+
+```typescript
+export const CONFIG = {
+    API_BASE: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1',
+    MODEL_NAME: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
+    MAX_FILE_SIZE: 8000,
+    MAX_CONTEXT_TOKENS: 2000,
+    MAX_REVIEW_LOOPS: 7,
+    REQUEST_TIMEOUT: 30000,
+    TEMPERATURE: 0.3,
+};
+```
+
+## Environment Variables
 
 ```bash
-# URL base del API OpenAI-compatible (default: http://localhost:11434/v1)
+# API endpoint (default: http://localhost:11434/v1)
 OLLAMA_API_BASE=http://localhost:11434/v1
 
-# Nombre del modelo a usar (default: deepseek-coder:6.7b)
+# Model name (default: deepseek-coder:6.7b)
 OLLAMA_MODEL=deepseek-coder:6.7b
 ```
 
----
+## Current Limitations
 
-## 8. Arquitectura del flujo
+This is a **work in progress** project:
 
-```text
-Usuario escribe pregunta
-  ↓
-[agent.ts] detectSkill() - ¿Necesita análisis complejo?
-  ├─ Sí: executeSkill()
-  │  ├─ Ejecuta múltiples tools automáticamente
-  │  ├─ Agrega contexto enriquecido
-  │  └─ Ralph revisa resultado final
-  │
-  └─ No: callModel()
-     ↓
-     ¿Devuelve tool-call?
-     ├─ Sí → handleTool() + Ralph
-     └─ No → Ralph sobre respuesta directa
-     ↓
-     Mostrar respuesta final al usuario
-```
+- Limited to simple tool calls (no complex tool chaining)
+- Ralph adds latency (extra model calls for review)
+- Small models may struggle with complex reasoning
+- No streaming support yet
+- CLI only (no web interface)
 
----
+## Future Improvements
 
-## 8b. Flujo de Skills (Detalle)
+- [ ] CLI flags for model selection, Ralph disable
+- [ ] Dynamic skill loading from external files
+- [ ] Skill marketplace/repository
+- [ ] Web interface
+- [ ] Streaming support
+- [ ] Session persistence
 
-Skills combinan múltiples tools y Ralph para análisis profundos:
+## License
 
-```text
-skill_analyze_project
-├─ list_dir('.')           → Estructura del proyecto
-├─ read_file('package.json') → Dependencias
-├─ search_in_file('src')     → Archivos fuente
-└─ run_command('npm run build') → Status de build
-   ↓
-   [Agregar todo al contexto del modelo]
-   ↓
-   Ralph: ¿Respuesta correcta?
+MIT - Experimental project for learning and exploration of local AI agents.
 
-skill_debug_error
-├─ search_in_file(pattern)    → ¿Dónde ocurre?
-├─ read_file(matched files)    → Contexto
-└─ run_command('npm test')     → Reproducir error
-   ↓
-   Ralph: ¿Sugerencia útil?
+## Acknowledgments
 
-skill_resolve_dependencies
-├─ read_file('package.json')    → Dependencias declaradas
-├─ run_command('npm list')      → Estado actual
-├─ search_in_file('src', imports) → Imports usados
-└─ run_command('npm run build')  → Errores de build
-   ↓
-   Ralph: ¿Solución correcta?
-```
+- [Ollama](https://ollama.com/) - For making local models accessible
+- [Vercel AI SDK](https://sdk.vercel.ai/) - Architecture inspiration
+- Ralph Wiggum - For the review mechanism naming
 
----
-
-## 9. Notas sobre la revisión (Ralph Loop)
-
-- El revisor usa el mismo modelo para verificar si una respuesta es correcta.
-- Es **estricto**: marca `REINTENTAR` si falta información o se sale del tema.
-- Máximo 7 iteraciones (configurable en `config.ts`).
-- Hace un extra call al modelo por cada revisión.
-
----
-
-## 9b. Documentación de Skills en Markdown
-
-Cada skill tiene un archivo markdown correspondiente en [skills/](./skills/):
-
-### Formato estándar
-
-Cada `.md` incluye:
-
-- ✅ **Descripción** - Qué hace la skill
-- ✅ **Ejemplos** - Cómo el usuario la invoca
-- ✅ **Parámetros** - Qué argumentos acepta
-- ✅ **Flujo** - Qué tools ejecuta en qué orden
-- ✅ **Casos de uso** - Cuándo es útil
-- ✅ **Salida** - Qué devuelve
-- ✅ **Metadata** - Autor, versión, última actualización
-
-**Ejemplo:** Ver [skills/analyze-project.md](./skills/analyze-project.md)
-
-### Ventajas
-
-- 📚 **Autodocumentadas** - Cada skill explica su propósito
-- 🔍 **Descubribles** - Usuarios ven todas las skills disponibles
-- 🚀 **Extensibles** - Modelo puede leer docs para mejorar detección automática
-- 📦 **Portables** - Skills con documentación lista para publicar en npm/GitHub
-
-### Crear skills nuevas
-
-1. **Crear `.md`** en `skills/` con documentación
-2. **Implementar en `src/skills.ts`**
-3. **Registrar en `AVAILABLE_SKILLS`** con referencia a markdown
-4. **Listo** - Modelo las detectará automáticamente
-
-Ver [skills/README.md](./skills/README.md) para guía completa.
-
----
-
-## 10. Próximos pasos sugeridos
-
-**Corto plazo:**
-
-- Añadir flags CLI:
-  - `--model <nombre_modelo>` para elegir modelo.
-  - `--no-ralph` para un modo rápido sin revisión.
-  - `--skill <nombre>` para ejecutar skill específico.
-- Crear sistema de carga de skills dinámicas (desde archivos externos).
-
-**Mediano plazo:**
-
-- Publicar skills en un repositorio público (npm registry o GitHub).
-- Sistema de verificación/firma de skills (seguridad).
-- Caching de resultados de skills para performance.
-
-**Largo plazo:**
-
-- Marketplace de skills (descubrir, evaluar, instalar).
-- Composición automática de skills (encadenar varias).
-- Persistencia de historial (guardar sesiones).
-
----
-
-## 11. Licencia
-
-Proyecto experimental para aprendizaje y exploración de agentes locales con Ollama.
