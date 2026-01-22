@@ -7,7 +7,7 @@ import { ralphLoop } from './reviewer.js';
 import { executeSkill, AVAILABLE_SKILLS } from './skills.js';
 let lastUserQuestion = null;
 /**
- * Detectar si una pregunta necesita una skill
+ * Detect if a question needs a skill
  */
 async function detectSkill(question) {
     const messages = [
@@ -23,13 +23,13 @@ async function detectSkill(question) {
     try {
         const response = await callModel(messages);
         const skillName = response.trim().toLowerCase();
-        // Verificar que sea una skill válida
+        // Verify it's a valid skill
         if (skillName !== 'none' && AVAILABLE_SKILLS[skillName]) {
             return skillName;
         }
     }
     catch {
-        // Si falla detección, continuar normalmente
+        // If detection fails, continue normally
     }
     return null;
 }
@@ -53,17 +53,17 @@ async function callModel(messages) {
         data.choices?.[0]?.message?.delta?.content ??
         '';
     if (!reply) {
-        throw new Error('Respuesta vacía del modelo');
+        throw new Error('Empty response from model');
     }
     return reply;
 }
-// ---- Bucle principal con soporte de tools + Ralph -------------------------
+// ---- Main loop with tools + Ralph support -------------------------
 async function main() {
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
     });
-    console.log('Agente Vercel+Ollama (escribe "exit" para salir)\n');
+    console.log('Mini Agent - CLI for local LLMs (type "exit" to quit)\n');
     const messages = [
         {
             role: 'system',
@@ -79,10 +79,10 @@ async function main() {
             lastUserQuestion = input;
             messages.push({ role: 'user', content: input });
             try {
-                // Primero: ¿Detectar si necesita una skill?
+                // First: Detect if it needs a skill?
                 const detectedSkill = await detectSkill(input);
                 if (detectedSkill) {
-                    console.log(`\n[SKILL DETECTADO: ${detectedSkill}]\n`);
+                    console.log(`\n[SKILL DETECTED: ${detectedSkill}]\n`);
                     const skillResult = await executeSkill(detectedSkill, messages, {
                         question: input,
                     });
@@ -90,12 +90,12 @@ async function main() {
                     messages.push({ role: 'assistant', content: skillResult });
                 }
                 else {
-                    // Si no es skill, proceder con tools normales
+                    // If not a skill, proceed with normal tools
                     const firstReply = await callModel(messages);
-                    // ¿Ha devuelto una tool-call?
+                    // Did it return a tool-call?
                     const toolCall = parseToolCall(firstReply);
                     if (toolCall) {
-                        // Enrutar a la herramienta correcta
+                        // Route to the correct tool
                         switch (toolCall.tool) {
                             case 'read_file':
                                 await handleReadFileTool(toolCall, messages);
@@ -110,14 +110,14 @@ async function main() {
                                 await handleRunCommandTool(toolCall, messages);
                                 break;
                             default:
-                                console.log(`\n[ERROR]\nHerramienta desconocida: "${toolCall.tool}"\n`);
-                                const refined = await ralphLoop(messages, lastUserQuestion ?? '', `Herramienta desconocida: ${toolCall.tool}`);
+                                console.log(`\n[ERROR]\nUnknown tool: "${toolCall.tool}"\n`);
+                                const refined = await ralphLoop(messages, lastUserQuestion ?? '', `Unknown tool: ${toolCall.tool}`);
                                 console.log('\n' + refined + '\n');
                                 messages.push({ role: 'assistant', content: refined });
                         }
                     }
                     else {
-                        // --------- Flujo sin tool: Ralph sobre la respuesta directa ---------
+                        // --------- Tool-less flow: Ralph on direct response ---------
                         const refined = await ralphLoop([...messages], lastUserQuestion ?? '', undefined);
                         console.log('\n' + refined + '\n');
                         messages.push({ role: 'assistant', content: refined });
@@ -125,7 +125,7 @@ async function main() {
                 }
             }
             catch (err) {
-                console.error('Error llamando al modelo:', err?.message ?? err);
+                console.error('Error calling model:', err?.message ?? err);
             }
             ask();
         });
@@ -137,22 +137,22 @@ async function handleReadFileTool(toolCall, messages) {
         typeof toolCall.args.path === 'string' &&
         toolCall.args.path.trim()) ||
         '';
-    if (filePath.includes('ruta/relativa/o/absoluta')) {
+    if (filePath.includes('relative/or/absolute/path')) {
         filePath = '';
     }
-    // Heurística: si menciona package.json y no tiene ruta, lo intentamos
+    // Heuristic: if it mentions package.json and has no path, try it
     if (!filePath && lastUserQuestion?.toLowerCase().includes('package.json')) {
         filePath = './package.json';
     }
     if (!filePath) {
-        console.log('\n[read_file]\nNo se proporcionó una ruta válida. ' +
-            'Por favor, especifica la ruta del archivo.\n');
-        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'No se pudo determinar una ruta de archivo válida.');
+        console.log('\n[read_file]\nNo valid path provided. ' +
+            'Please specify the file path.\n');
+        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'Could not determine a valid file path.');
         console.log('\n' + refined + '\n');
         messages.push({ role: 'assistant', content: refined });
         return;
     }
-    // Caso especial: package.json -> resolvemos nosotros, sin modelo
+    // Special case: package.json -> resolve ourselves, without model
     if (path.basename(filePath) === 'package.json') {
         try {
             const answer = await extractPackageJsonDeps(filePath);
@@ -169,10 +169,10 @@ async function handleReadFileTool(toolCall, messages) {
             return;
         }
     }
-    // ---- Flujo normal con otros archivos ----
+    // ---- Normal flow with other files ----
     const toolResult = await readFileTool({ path: filePath });
     console.log('\n[read_file]\n' + toolResult + '\n');
-    if (toolResult.startsWith('Error al leer el archivo')) {
+    if (toolResult.startsWith('Error reading file')) {
         const refined = await ralphLoop(messages, lastUserQuestion ?? '', toolResult);
         console.log('\n' + refined + '\n');
         messages.push({ role: 'assistant', content: refined });
@@ -183,16 +183,16 @@ async function handleReadFileTool(toolCall, messages) {
         name: 'read_file',
         content: toolResult,
     });
-    const question = lastUserQuestion ?? 'Resume el contenido del archivo para el usuario.';
+    const question = lastUserQuestion ?? 'Summarize the file content for the user.';
     messages.push({
         role: 'user',
-        content: 'A partir ÚNICAMENTE del contenido proporcionado por la herramienta anterior, ' +
-            'responde EXACTAMENTE a la siguiente petición, en español técnico y conciso. ' +
-            'No expliques cómo escribir código ni cómo hacerlo paso a paso. ' +
-            'No des instrucciones sobre otras herramientas. ' +
-            'Limítate a extraer la información pedida del archivo y responder de forma directa en texto plano. ' +
-            'NO vuelvas a devolver JSON ni a pedir herramientas.\n\n' +
-            'Petición: ' +
+        content: 'Based ONLY on the content provided by the previous tool, ' +
+            'respond EXACTLY to the following request in technical and concise English. ' +
+            'Do not explain how to write code or how to do it step by step. ' +
+            'Do not give instructions about other tools. ' +
+            'Just extract the requested information from the file and respond directly in plain text. ' +
+            'Do not return JSON or ask for tools again.\n\n' +
+            'Request: ' +
             question,
     });
     const refined = await ralphLoop(messages, question, toolResult);
@@ -202,8 +202,8 @@ async function handleReadFileTool(toolCall, messages) {
 async function handleListDirTool(toolCall, messages) {
     const dirPath = (toolCall.args && typeof toolCall.args.path === 'string' && toolCall.args.path.trim()) || '';
     if (!dirPath) {
-        console.log('\n[list_dir]\nNo se proporcionó una ruta válida.\n');
-        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'No se pudo determinar una ruta de directorio válida.');
+        console.log('\n[list_dir]\nNo valid path provided.\n');
+        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'Could not determine a valid directory path.');
         console.log('\n' + refined + '\n');
         messages.push({ role: 'assistant', content: refined });
         return;
@@ -217,7 +217,7 @@ async function handleListDirTool(toolCall, messages) {
     });
     messages.push({
         role: 'user',
-        content: 'Basándote en el listado anterior, responde a la pregunta: ' + (lastUserQuestion ?? ''),
+        content: 'Based on the listing above, answer the question: ' + (lastUserQuestion ?? ''),
     });
     const refined = await ralphLoop(messages, lastUserQuestion ?? '', toolResult);
     console.log('\n' + refined + '\n');
@@ -228,8 +228,8 @@ async function handleSearchInFileTool(toolCall, messages) {
     const pattern = (toolCall.args && typeof toolCall.args.pattern === 'string' && toolCall.args.pattern.trim()) ||
         '';
     if (!filePath || !pattern) {
-        console.log('\n[search_in_file]\nFaltan parámetros (path, pattern).\n');
-        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'Parámetros insuficientes para search_in_file.');
+        console.log('\n[search_in_file]\nMissing parameters (path, pattern).\n');
+        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'Insufficient parameters for search_in_file.');
         console.log('\n' + refined + '\n');
         messages.push({ role: 'assistant', content: refined });
         return;
@@ -243,7 +243,7 @@ async function handleSearchInFileTool(toolCall, messages) {
     });
     messages.push({
         role: 'user',
-        content: 'Basándote en los resultados de búsqueda anteriores, responde: ' +
+        content: 'Based on the search results above, answer: ' +
             (lastUserQuestion ?? ''),
     });
     const refined = await ralphLoop(messages, lastUserQuestion ?? '', toolResult);
@@ -254,8 +254,8 @@ async function handleRunCommandTool(toolCall, messages) {
     const command = (toolCall.args && typeof toolCall.args.command === 'string' && toolCall.args.command.trim()) ||
         '';
     if (!command) {
-        console.log('\n[run_command]\nNo se proporcionó un comando válido.\n');
-        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'No se pudo determinar un comando válido.');
+        console.log('\n[run_command]\nNo valid command provided.\n');
+        const refined = await ralphLoop(messages, lastUserQuestion ?? '', 'Could not determine a valid command.');
         console.log('\n' + refined + '\n');
         messages.push({ role: 'assistant', content: refined });
         return;
@@ -269,7 +269,7 @@ async function handleRunCommandTool(toolCall, messages) {
     });
     messages.push({
         role: 'user',
-        content: 'Basándote en la salida anterior del comando, responde: ' + (lastUserQuestion ?? ''),
+        content: 'Based on the command output above, answer: ' + (lastUserQuestion ?? ''),
     });
     const refined = await ralphLoop(messages, lastUserQuestion ?? '', toolResult);
     console.log('\n' + refined + '\n');

@@ -1,5 +1,5 @@
 /**
- * Configuración centralizada del agente
+ * Centralized agent configuration
  */
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
@@ -11,47 +11,48 @@ export interface ChatMessage {
 }
 
 export const CONFIG = {
-    // Conexión a Ollama
+    // Ollama connection
     API_BASE: process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1',
     MODEL_NAME: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
 
-    // Límites
+    // Limits
     MAX_FILE_SIZE: 8000,
     MAX_CONTEXT_TOKENS: 2000,
     MAX_REVIEW_LOOPS: 7,
     REQUEST_TIMEOUT: 30000,
-    TEMPERATURE: 0.3,  // Baja para consistencia en modelos pequeños
+    TEMPERATURE: 0.3,  // Low for consistency with small models
 
-    // Mensajes del sistema (optimizado para modelos pequeños)
-    SYSTEM_PROMPT: `Eres un asistente técnico. Responde en español, claro y conciso. Sin emojis.
+    // System messages (optimized for small models)
+    SYSTEM_PROMPT: `You are a technical assistant. Respond in English, clear and concise. No emojis.
 
-HERRAMIENTAS disponibles:
-- "read_file": lee contenido de un archivo
-- "list_dir": lista archivos de un directorio
-- "search_in_file": busca patrones en un archivo
-- "run_command": ejecuta un comando y resume salida
+AVAILABLE TOOLS:
+- "read_file": read file content
+- "list_dir": list files in a directory
+- "search_in_file": search patterns in a file
+- "run_command": execute a command and summarize output
 
-Solo usa herramientas si el usuario lo pide. Para preguntas conceptuales, responde directamente.
+Only use tools if the user asks for them. For conceptual questions, respond directly.
 
-CUANDO USES UNA HERRAMIENTA, responde SOLO con JSON:
-{ "tool": "nombre", "args": {...} }
+WHEN USING A TOOL, respond ONLY with JSON:
+{ "tool": "name", "args": {...} }
 
-Si NO necesitas herramienta, responde en texto normal.`,
+If you do NOT need a tool, respond in normal text.`,
 
-    REVIEWER_PROMPT: `Revisor estricto. ¿Es correcta y útil la respuesta?
-Si falta info, inventa algo o se sale del tema → REINTENTAR.
+    REVIEWER_PROMPT: `Strict reviewer. Is the answer correct and useful?
+If missing info, made something up, or went off topic → RETRY.
 
-Responde SOLO con JSON:
-{ "verdict": "OK" | "REINTENTAR", "feedback": "breve" }`,
+Respond ONLY with JSON:
+{ "verdict": "OK" | "RETRY", "feedback": "brief" }`,
 
-    // Prompt para detectar cuándo usar skills
-    SKILL_DETECTOR_PROMPT: `Analiza la pregunta del usuario. ¿Necesita una skill (análisis complejo) o una tool simple?
+    // Prompt for detecting when to use skills
+    SKILL_DETECTOR_PROMPT: `Analyze the user's question. Does it need a skill (complex analysis) or a simple tool?
 
-Si la pregunta requiere:
-- Analizar todo el proyecto → skill: analyze_project
-- Debuggear un error → skill: debug_error
-- Resolver dependencias → skill: resolve_dependencies
-- Otra cosa → responde: NONE
+If the question requires:
+- Analyzing the entire project → skill: analyze_project
+- Debugging an error → skill: debug_error
+- Resolving dependencies → skill: resolve_dependencies
+- Something else → respond: NONE
 
-Responde SOLO con: "skill_name" o "NONE"`,
+Respond ONLY with: "skill_name" or "NONE"`,
 };
+

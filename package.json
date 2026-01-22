@@ -1,11 +1,11 @@
 {
-  "name": "vercel-ollama-agent",
+  "name": "mini-agent",
   "version": "1.0.0",
-  "description": "CLI agente con Vercel AI SDK + Ollama",
+  "description": "CLI agent for small local LLMs with tools and self-review",
   "type": "module",
   "main": "dist/agent.js",
   "bin": {
-    "vo-agent": "dist/agent.js"
+    "mini-agent": "dist/agent.js"
   },
   "scripts": {
     "build": "tsc",
